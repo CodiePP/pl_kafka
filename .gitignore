@@ -1,0 +1,17 @@
+obj-*/
+/plkafka-*
+
+src/config.h
+src/config.h.in
+src/*.qlf
+
+aclocal.m4
+configure
+*.log
+Makefile
+
+*~
+
+config.status
+autom4te.cache
+
