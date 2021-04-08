@@ -34,11 +34,15 @@ foreign_t swi_kafka_conf_set(term_t cid, term_t k, term_t v);
 foreign_t swi_kafka_topic_conf_set(term_t cid, term_t k, term_t v);
 foreign_t swi_kafka_consumer_new(term_t cid, term_t consumer);
 foreign_t swi_kafka_producer_new(term_t cid, term_t producer);
+foreign_t swi_kafka_destroy(term_t client);
 foreign_t swi_kafka_conf_dump(term_t cid, term_t list);
 foreign_t swi_kafka_topic_new(term_t cid, term_t producer, atom_t name, term_t topic);
 foreign_t swi_kafka_topic_destroy(term_t topic);
 foreign_t swi_kafka_produce(term_t topic, term_t partition, term_t payload, atom_t key);
 foreign_t swi_kafka_flush(term_t client, term_t timeout);
+foreign_t swi_kafka_consumer_poll(term_t client, term_t timeout, term_t message, term_t meta);
+foreign_t swi_kafka_subscribe(term_t client, term_t lo, term_t hi, term_t len, term_t topics);
+foreign_t swi_kafka_unsubscribe(term_t client);
 
 
 /* install predicates */
@@ -53,11 +57,15 @@ install_t install()
   PL_register_foreign("pl_kafka_topic_conf_set", 3, swi_kafka_topic_conf_set, 0);
   PL_register_foreign("pl_kafka_consumer_new", 2, swi_kafka_consumer_new, 0);
   PL_register_foreign("pl_kafka_producer_new", 2, swi_kafka_producer_new, 0);
+  PL_register_foreign("pl_kafka_destroy", 1, swi_kafka_destroy, 0);
   PL_register_foreign("pl_kafka_conf_dump", 2, swi_kafka_conf_dump, 0);
   PL_register_foreign("pl_kafka_topic_new", 4, swi_kafka_topic_new, 0);
   PL_register_foreign("pl_kafka_topic_destroy", 1, swi_kafka_topic_destroy, 0);
   PL_register_foreign("pl_kafka_produce", 4, swi_kafka_produce, 0);
   PL_register_foreign("pl_kafka_flush", 2, swi_kafka_flush, 0);
+  PL_register_foreign("pl_kafka_consumer_poll", 4, swi_kafka_consumer_poll, 0);
+  PL_register_foreign("pl_kafka_subscribe", 5, swi_kafka_subscribe, 0);
+  PL_register_foreign("pl_kafka_unsubscribe", 1, swi_kafka_unsubscribe, 0);
 }
 
 
@@ -190,6 +198,16 @@ foreign_t swi_kafka_producer_new(term_t in_cid, term_t out_client)
   return swi_kafka_new("producer", RD_KAFKA_PRODUCER, in_cid, out_client);
 }
 
+foreign_t swi_kafka_destroy(term_t in_client)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  rd_kafka_destroy(rk);
+  PL_succeed;
+}
+
 foreign_t swi_kafka_topic_new(term_t in_client, atom_t in_name, term_t in_cid, term_t out_topic)
 {
   if (PL_is_variable(in_client)) { PL_fail; }
@@ -264,6 +282,119 @@ foreign_t swi_kafka_flush(term_t in_client, term_t in_timeout)
   PL_get_integer(in_timeout, &timeout);
 
   rd_kafka_resp_err_t res = rd_kafka_flush(rk, timeout);
+  if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
+  PL_succeed;
+}
+
+int unify_message(rd_kafka_message_t *msg, term_t out_msg, term_t out_meta)
+{
+  if (!msg || msg->err != 0) { return -1; }
+  if (!PL_is_variable(out_msg)) { return -2; }
+  if (!PL_is_variable(out_meta)) { return -3; }
+
+  if (!PL_unify_term(out_msg, PL_NCHARS, msg->len, (char*)msg->payload)) { return 1; }
+
+  term_t ele = PL_new_term_ref();
+  term_t lst = PL_copy_term_ref(out_meta);
+
+  functor_t fct = PL_new_functor(PL_new_atom("partition"), 1);
+  if (!PL_unify_list(lst, ele, lst)) { return 2; }
+  if (!PL_unify_term(ele, PL_FUNCTOR, fct,
+                          PL_LONG, msg->partition)) { return 3; }
+  fct = PL_new_functor(PL_new_atom("offset"), 1);
+  if (!PL_unify_list(lst, ele, lst)) { return 4; }
+  if (!PL_unify_term(ele, PL_FUNCTOR, fct,
+                          PL_INT64, msg->offset)) { return 5; }
+  if (msg->key_len > 0 && msg->key)
+  {
+    fct = PL_new_functor(PL_new_atom("key"), 1);
+    if (!PL_unify_list(lst, ele, lst)) { return 6; }
+    if (!PL_unify_term(ele, PL_FUNCTOR, fct,
+                            PL_NCHARS, msg->key_len, msg->key)) { return 7; }
+  }
+
+  if (PL_unify_nil(lst) != TRUE) { return 99; }
+  return 0;
+}
+
+foreign_t swi_kafka_consumer_poll(term_t in_client, term_t in_timeout, term_t out_message, term_t out_meta)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  if (PL_is_variable(in_timeout)) { PL_fail; }
+  int32_t timeout;
+  PL_get_integer(in_timeout, &timeout);
+
+  if (!PL_is_variable(out_message)) { PL_fail; }
+  if (!PL_is_variable(out_meta)) { PL_fail; }
+
+  rd_kafka_message_t *msg = rd_kafka_consumer_poll(rk, timeout);
+  if (!msg)
+  {
+    //printf("ERROR: nothing returned from poll\n");
+    PL_fail;
+  }
+  if (msg->err != 0)
+  {
+    printf("ERROR: polling returned: %s\n", (char*)msg->payload);
+    PL_fail;
+  }
+  int res;
+  if ((res = unify_message(msg, out_message, out_meta)) != 0)
+  {
+    printf("ERROR: poll message unification returned: %d\n", res);
+    PL_fail;
+  }
+  PL_succeed;
+}
+
+foreign_t swi_kafka_subscribe(term_t in_client, term_t in_lo, term_t in_hi, term_t in_len, term_t in_topics)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  if (PL_is_variable(in_lo)) { PL_fail; }
+  int32_t lo;
+  PL_get_integer(in_lo, &lo);
+
+  if (PL_is_variable(in_hi)) { PL_fail; }
+  int32_t hi;
+  PL_get_integer(in_hi, &hi);
+
+  if (PL_is_variable(in_len)) { PL_fail; }
+  int32_t len;
+  PL_get_integer(in_len, &len);
+
+  if (PL_is_variable(in_topics)) { PL_fail; }
+
+  term_t hd = PL_new_term_ref();
+  term_t ls = PL_copy_term_ref(in_topics);
+  rd_kafka_topic_partition_list_t *ktl = rd_kafka_topic_partition_list_new(len);
+  int cnt = 0;
+  while (PL_get_list(ls, hd, ls))
+  {
+    cnt++;
+    if (cnt > len) { break; }
+    char *k_topic;
+    if (!PL_get_chars(hd, &k_topic, CVT_ATOM|CVT_STRING)) { PL_fail; }
+    rd_kafka_topic_partition_list_add_range(ktl, k_topic, lo, hi);
+  }
+  rd_kafka_resp_err_t res = rd_kafka_subscribe(rk, ktl);
+  rd_kafka_topic_partition_list_destroy(ktl);
+  if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
+  PL_succeed;
+}
+
+foreign_t swi_kafka_unsubscribe(term_t in_client)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  rd_kafka_resp_err_t res = rd_kafka_unsubscribe(rk);
   if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
   PL_succeed;
 }

@@ -2,7 +2,6 @@
 /* Prolog Interface to Kafka                                               */
 /*                                                                         */
 /* File  : kafka.pl                                                        */
-/* Descr.:                                                                 */
 /* Author: Alexander Diemand                                               */
 /*                                                                         */
 /* Copyright (C) 2021 Alexander Diemand                                    */
@@ -32,19 +31,20 @@
                  , kafka_topic_destroy/1
                  , kafka_consumer_new/2
                  , kafka_producer_new/2
+                 , kafka_destroy/1
                  , kafka_conf_dump/2
                  , kafka_produce/2
                  , kafka_produce/3
                  , kafka_produce/4
                  , kafka_flush/2
-                 %, pl_kafka_consumer_close/1
-                 %, pl_kafka_destroy/1
-                 %, pl_kafka_topic_new/2
-                 %, pl_kafka_topic_destroy/1
-                 %, pl_kafka_consume_start/4
-                 %, pl_kafka_consume/2
-                 %, pl_kafka_consume_batch/2
-                 %, pl_kafka_consume_callback/2
+                 , kafka_consumer_poll/4
+                 , kafka_subscribe/4
+                 , kafka_unsubscribe/1
+                 %, kafka_consumer_close/1
+                 %, kafka_consume_start/4
+                 %, kafka_consume/2
+                 %, kafka_consume_batch/2
+                 %, kafka_consume_callback/2
                  ]).
 
 :- use_foreign_library(sbcl('plkafka')).
@@ -93,6 +93,11 @@ kafka_producer_new(Cid, Producer) :-
   nonvar(Cid), var(Producer),
   pl_kafka_producer_new(Cid, Producer).
 
+% kafka_destroy(+Client)
+kafka_destroy(Client) :-
+  nonvar(Client),
+  pl_kafka_destroy(Client).
+
 % kafka_conf_dump(+Cid, -ConfPairs)
 kafka_conf_dump(Cid, ConfPairs) :-
   var(ConfPairs),
@@ -132,4 +137,22 @@ kafka_produce(Topic, Partition, Payload, Key) :-
 kafka_flush(Client, Timeout) :-
   nonvar(Client), integer(Timeout),
   pl_kafka_flush(Client, Timeout).
+
+% kafka_consumer_poll(+Client, +Integer, -String, -List)
+kafka_consumer_poll(Client, Timeout, Msg, Meta) :-
+  nonvar(Client), integer(Timeout),
+  var(Msg), var(Meta),
+  pl_kafka_consumer_poll(Client, Timeout, Msg, Meta).
+
+% kafka_subscribe(+Client, +Integer, +Integer, +List)
+kafka_subscribe(Client, Lo, Hi, Topics) :-
+  nonvar(Client), nonvar(Topics),
+  integer(Lo), integer(Hi), Lo =< Hi,
+  length(Topics, Len), Len > 0,
+  pl_kafka_subscribe(Client, Lo, Hi, Len, Topics).
+
+% kafka_unsubscribe(+Client)
+kafka_unsubscribe(Client) :-
+  nonvar(Client),
+  pl_kafka_unsubscribe(Client).
 
