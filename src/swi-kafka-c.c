@@ -39,10 +39,15 @@ foreign_t swi_kafka_conf_dump(term_t cid, term_t list);
 foreign_t swi_kafka_topic_new(term_t cid, term_t producer, atom_t name, term_t topic);
 foreign_t swi_kafka_topic_destroy(term_t topic);
 foreign_t swi_kafka_produce(term_t topic, term_t partition, term_t payload, atom_t key);
+foreign_t swi_kafka_produce_batch(term_t topic, term_t partition, term_t len, term_t list);
+foreign_t swi_kafka_consume_batch(term_t topic, term_t partition, term_t timeout, term_t list);
+foreign_t swi_kafka_consume_start(term_t topic, term_t partition, term_t offset);
+foreign_t swi_kafka_consume_stop(term_t topic, term_t partition);
 foreign_t swi_kafka_flush(term_t client, term_t timeout);
 foreign_t swi_kafka_consumer_poll(term_t client, term_t timeout, term_t message, term_t meta);
 foreign_t swi_kafka_subscribe(term_t client, term_t lo, term_t hi, term_t len, term_t topics);
 foreign_t swi_kafka_unsubscribe(term_t client);
+foreign_t swi_kafka_consumer_close(term_t client);
 
 
 /* install predicates */
@@ -62,10 +67,15 @@ install_t install()
   PL_register_foreign("pl_kafka_topic_new", 4, swi_kafka_topic_new, 0);
   PL_register_foreign("pl_kafka_topic_destroy", 1, swi_kafka_topic_destroy, 0);
   PL_register_foreign("pl_kafka_produce", 4, swi_kafka_produce, 0);
+  PL_register_foreign("pl_kafka_produce_batch", 4, swi_kafka_produce_batch, 0);
+  PL_register_foreign("pl_kafka_consume_batch", 4, swi_kafka_consume_batch, 0);
   PL_register_foreign("pl_kafka_flush", 2, swi_kafka_flush, 0);
   PL_register_foreign("pl_kafka_consumer_poll", 4, swi_kafka_consumer_poll, 0);
   PL_register_foreign("pl_kafka_subscribe", 5, swi_kafka_subscribe, 0);
   PL_register_foreign("pl_kafka_unsubscribe", 1, swi_kafka_unsubscribe, 0);
+  PL_register_foreign("pl_kafka_consumer_close", 1, swi_kafka_consumer_close, 0);
+  PL_register_foreign("pl_kafka_consume_start", 3, swi_kafka_consume_start, 0);
+  PL_register_foreign("pl_kafka_consume_stop", 2, swi_kafka_consume_stop, 0);
 }
 
 
@@ -271,6 +281,133 @@ foreign_t swi_kafka_produce(term_t in_topic, term_t in_partition, term_t in_payl
   PL_succeed;
 }
 
+foreign_t swi_kafka_produce_batch(term_t in_topic, term_t in_partition, term_t in_len, term_t in_list)
+{
+  if (PL_is_variable(in_topic)) { PL_fail; }
+  rd_kafka_topic_t *rkt;
+  if (!PL_get_pointer(in_topic, (void**)&rkt)) { PL_fail; }
+
+  int32_t partition;
+  PL_get_integer(in_partition, &partition);
+  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
+
+  int32_t llen;
+  PL_get_integer(in_len, &llen);
+  if (llen <= 0) { PL_fail; }
+
+  if (PL_is_variable(in_list)) { PL_fail; }
+
+  term_t hd = PL_new_term_ref();
+  term_t ls = PL_copy_term_ref(in_list);
+  rd_kafka_message_t msgs[llen];
+  int cnt = 0;
+  while (PL_get_list(ls, hd, ls))
+  {
+    char *k_payload; int n_payload = 0;
+
+    if (!PL_get_chars(hd, &k_payload, CVT_ATOM|CVT_STRING)) { PL_fail; }
+    n_payload = strlen(k_payload);
+    msgs[cnt].payload = k_payload;
+    msgs[cnt].len = n_payload;
+    msgs[cnt].key_len = 0; msgs[cnt].key = NULL;
+    msgs[cnt]._private = NULL;
+    msgs[cnt].err = 0;
+
+    cnt++;
+  }
+
+  int res = rd_kafka_produce_batch(rkt, partition,
+              RD_KAFKA_MSG_F_COPY | RD_KAFKA_MSG_F_BLOCK,
+              msgs, cnt);
+  if (res != cnt) {
+    printf("kafka_produce_batch produced: %d\n", res);
+    PL_fail; }
+  PL_succeed;
+}
+
+foreign_t swi_kafka_consume_batch(term_t in_topic, term_t in_partition, term_t in_timeout, term_t out_list)
+{
+  if (PL_is_variable(in_topic)) { PL_fail; }
+  rd_kafka_topic_t *rkt;
+  if (!PL_get_pointer(in_topic, (void**)&rkt)) { PL_fail; }
+
+  int32_t partition;
+  PL_get_integer(in_partition, &partition);
+  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
+
+  int32_t timeout;
+  PL_get_integer(in_timeout, &timeout);
+  if (timeout <= 0) { PL_fail; }
+
+  if (!PL_is_variable(out_list)) { PL_fail; }
+
+  int sz = 100;
+  rd_kafka_message_t* msgs[sz];
+
+  int res = rd_kafka_consume_batch(rkt, partition, timeout,
+                                   msgs, sz);
+  if (res <= 0) {
+    PL_fail;
+  }
+
+  term_t ele = PL_new_term_ref();
+  term_t lst = PL_copy_term_ref(out_list);
+  int idx = 0;
+  int isOK = 1;
+  while (idx < res)
+  {
+    if (msgs[idx]->err == RD_KAFKA_RESP_ERR__PARTITION_EOF) { break; }
+    if (msgs[idx]->err == 0) {
+      if (!PL_unify_list(lst, ele, lst)) { isOK = 0; break; }
+      if (!PL_unify_term(ele, PL_NCHARS, msgs[idx]->len, (char*)msgs[idx]->payload)) { isOK = 0; break; }
+    }
+    rd_kafka_message_destroy(msgs[idx]);
+    idx++;
+  }
+
+  if (isOK) {
+    return PL_unify_nil(lst);
+  }
+  PL_fail;
+}
+
+foreign_t swi_kafka_consume_start(term_t in_topic, term_t in_partition, term_t in_offset)
+{
+  if (PL_is_variable(in_topic)) { PL_fail; }
+  rd_kafka_topic_t *rkt;
+  if (!PL_get_pointer(in_topic, (void**)&rkt)) { PL_fail; }
+
+  int32_t partition;
+  PL_get_integer(in_partition, &partition);
+  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
+
+  int64_t offset;
+  PL_get_int64(in_offset, &offset);
+
+  if (rd_kafka_consume_start(rkt, partition, offset) != 0)
+  {
+    PL_fail;
+  }
+  PL_succeed;
+}
+
+foreign_t swi_kafka_consume_stop(term_t in_topic, term_t in_partition)
+{
+  if (PL_is_variable(in_topic)) { PL_fail; }
+  rd_kafka_topic_t *rkt;
+  if (!PL_get_pointer(in_topic, (void**)&rkt)) { PL_fail; }
+
+  int32_t partition;
+  PL_get_integer(in_partition, &partition);
+  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
+
+  if (rd_kafka_consume_stop(rkt, partition) != 0)
+  {
+    PL_fail;
+  }
+  PL_succeed;
+}
+
 foreign_t swi_kafka_flush(term_t in_client, term_t in_timeout)
 {
   if (PL_is_variable(in_client)) { PL_fail; }
@@ -399,3 +536,13 @@ foreign_t swi_kafka_unsubscribe(term_t in_client)
   PL_succeed;
 }
 
+foreign_t swi_kafka_consumer_close(term_t in_client)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  rd_kafka_resp_err_t res = rd_kafka_consumer_close(rk);
+  if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
+  PL_succeed;
+}

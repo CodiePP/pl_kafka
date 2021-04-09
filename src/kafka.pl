@@ -36,15 +36,15 @@
                  , kafka_produce/2
                  , kafka_produce/3
                  , kafka_produce/4
+                 , kafka_produce_batch/3
                  , kafka_flush/2
                  , kafka_consumer_poll/4
                  , kafka_subscribe/4
                  , kafka_unsubscribe/1
-                 %, kafka_consumer_close/1
-                 %, kafka_consume_start/4
-                 %, kafka_consume/2
-                 %, kafka_consume_batch/2
-                 %, kafka_consume_callback/2
+                 , kafka_consumer_close/1
+                 , kafka_consume_batch/4
+                 , kafka_consume_start/3
+                 , kafka_consume_stop/2
                  ]).
 
 :- use_foreign_library(sbcl('plkafka')).
@@ -118,6 +118,7 @@ kafka_topic_destroy(Topic) :-
 kafka_produce(Topic, Payload) :-
   nonvar(Topic),
   ( string(Payload) ; atom(Payload) ),
+  % partition unassigned (-1)
   pl_kafka_produce(Topic, -1, Payload, '').
 
 % kafka_produce(+Topic, +Integer, +String)
@@ -132,6 +133,28 @@ kafka_produce(Topic, Partition, Payload, Key) :-
   ( string(Payload) ; atom(Payload) ),
   ( string(Key) ; atom(Key) ),
   pl_kafka_produce(Topic, Partition, Payload, Key).
+
+% kafka_produce_batch(+Topic, +Integer, +List)
+kafka_produce_batch(Topic, Partition, PayloadList) :-
+  nonvar(Topic), integer(Partition),
+  nonvar(PayloadList), length(PayloadList, LL), LL > 0,
+  pl_kafka_produce_batch(Topic, Partition, LL, PayloadList).
+
+% kafka_consume_batch(+Topic, +Integer, +Integer, +List)
+kafka_consume_batch(Topic, Partition, Timeout, MessageList) :-
+  nonvar(Topic), integer(Partition), integer(Timeout),
+  var(MessageList),
+  pl_kafka_consume_batch(Topic, Partition, Timeout, MessageList).
+
+% kafka_consume_start(+Topic, +Integer, +Integer)
+kafka_consume_start(Topic, Partition, Offset) :-
+  nonvar(Topic), integer(Partition), integer(Offset),
+  pl_kafka_consume_start(Topic, Partition, Offset).
+
+% kafka_consume_stop(+Topic, +Integer)
+kafka_consume_stop(Topic, Partition) :-
+  nonvar(Topic), integer(Partition),
+  pl_kafka_consume_stop(Topic, Partition).
 
 % kafka_flush(+Client, +Integer)
 kafka_flush(Client, Timeout) :-
@@ -156,3 +179,7 @@ kafka_unsubscribe(Client) :-
   nonvar(Client),
   pl_kafka_unsubscribe(Client).
 
+% kafka_consumer_close(+Client)
+kafka_consumer_close(Client) :-
+  nonvar(Client),
+  pl_kafka_consumer_close(Client).

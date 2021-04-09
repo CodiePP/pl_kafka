@@ -28,11 +28,13 @@ run_test :-
   repeat,
     kafka_consumer_poll(Consumer, 500, Msg, Meta),
     format("read payload: ~p~n     meta: ~p ~n",[Msg,Meta]),
-  kafka_unsubscribe(Consumer),
+  
+  %kafka_unsubscribe(Consumer),
+  kafka_consumer_close(Consumer),
 
-  kafka_flush(Consumer, 500),
-  format("destroying consumer ...~n",[]),
-  kafka_destroy(Consumer),
+  %kafka_flush(Consumer, 500),
+  %format("destroying consumer ...~n",[]),
+  %kafka_destroy(Consumer),
   format("consumer destroyed~n",[]).
 
 

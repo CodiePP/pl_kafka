@@ -27,6 +27,7 @@ run_test :-
   kafka_produce(Topic001, "hello there."),
   kafka_produce(Topic001, -1, "keying..", 'key'),
   kafka_produce(Topic001, 0, 'sending in partition 0'),
+  kafka_produce_batch(Topic001, -1, ['one', 'two', 'three']),
 
   format("written payload~n",[]),
   kafka_flush(Producer, 2000),
