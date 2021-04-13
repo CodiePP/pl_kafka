@@ -39,6 +39,7 @@
                  , kafka_produce_batch/3
                  , kafka_flush/2
                  , kafka_consumer_poll/4
+                 , kafka_subscribe/2
                  , kafka_subscribe/4
                  , kafka_unsubscribe/1
                  , kafka_consumer_close/1
@@ -166,6 +167,12 @@ kafka_consumer_poll(Client, Timeout, Msg, Meta) :-
   nonvar(Client), integer(Timeout),
   var(Msg), var(Meta),
   pl_kafka_consumer_poll(Client, Timeout, Msg, Meta).
+
+% kafka_subscribe(+Client, +List)
+kafka_subscribe(Client, Topics) :-
+  nonvar(Client), nonvar(Topics),
+  length(Topics, Len), Len > 0,
+  pl_kafka_subscribe(Client, Len, Topics).
 
 % kafka_subscribe(+Client, +Integer, +Integer, +List)
 kafka_subscribe(Client, Lo, Hi, Topics) :-

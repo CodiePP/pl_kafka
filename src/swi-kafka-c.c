@@ -45,7 +45,8 @@ foreign_t swi_kafka_consume_start(term_t topic, term_t partition, term_t offset)
 foreign_t swi_kafka_consume_stop(term_t topic, term_t partition);
 foreign_t swi_kafka_flush(term_t client, term_t timeout);
 foreign_t swi_kafka_consumer_poll(term_t client, term_t timeout, term_t message, term_t meta);
-foreign_t swi_kafka_subscribe(term_t client, term_t lo, term_t hi, term_t len, term_t topics);
+foreign_t swi_kafka_subscribe3(term_t client, term_t len, term_t topics);
+foreign_t swi_kafka_subscribe5(term_t client, term_t lo, term_t hi, term_t len, term_t topics);
 foreign_t swi_kafka_unsubscribe(term_t client);
 foreign_t swi_kafka_consumer_close(term_t client);
 
@@ -71,7 +72,8 @@ install_t install()
   PL_register_foreign("pl_kafka_consume_batch", 4, swi_kafka_consume_batch, 0);
   PL_register_foreign("pl_kafka_flush", 2, swi_kafka_flush, 0);
   PL_register_foreign("pl_kafka_consumer_poll", 4, swi_kafka_consumer_poll, 0);
-  PL_register_foreign("pl_kafka_subscribe", 5, swi_kafka_subscribe, 0);
+  PL_register_foreign("pl_kafka_subscribe", 3, swi_kafka_subscribe3, 0);
+  PL_register_foreign("pl_kafka_subscribe", 5, swi_kafka_subscribe5, 0);
   PL_register_foreign("pl_kafka_unsubscribe", 1, swi_kafka_unsubscribe, 0);
   PL_register_foreign("pl_kafka_consumer_close", 1, swi_kafka_consumer_close, 0);
   PL_register_foreign("pl_kafka_consume_start", 3, swi_kafka_consume_start, 0);
@@ -487,7 +489,37 @@ foreign_t swi_kafka_consumer_poll(term_t in_client, term_t in_timeout, term_t ou
   PL_succeed;
 }
 
-foreign_t swi_kafka_subscribe(term_t in_client, term_t in_lo, term_t in_hi, term_t in_len, term_t in_topics)
+foreign_t swi_kafka_subscribe3(term_t in_client, term_t in_len, term_t in_topics)
+{
+  if (PL_is_variable(in_client)) { PL_fail; }
+  rd_kafka_t *rk;
+  if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
+
+  if (PL_is_variable(in_len)) { PL_fail; }
+  int32_t len;
+  PL_get_integer(in_len, &len);
+
+  if (PL_is_variable(in_topics)) { PL_fail; }
+
+  term_t hd = PL_new_term_ref();
+  term_t ls = PL_copy_term_ref(in_topics);
+  rd_kafka_topic_partition_list_t *ktl = rd_kafka_topic_partition_list_new(len);
+  int cnt = 0;
+  while (PL_get_list(ls, hd, ls))
+  {
+    cnt++;
+    if (cnt > len) { break; }
+    char *k_topic;
+    if (!PL_get_chars(hd, &k_topic, CVT_ATOM|CVT_STRING)) { PL_fail; }
+    rd_kafka_topic_partition_list_add(ktl, k_topic, -1);
+  }
+  rd_kafka_resp_err_t res = rd_kafka_subscribe(rk, ktl);
+  rd_kafka_topic_partition_list_destroy(ktl);
+  if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
+  PL_succeed;
+}
+
+foreign_t swi_kafka_subscribe5(term_t in_client, term_t in_lo, term_t in_hi, term_t in_len, term_t in_topics)
 {
   if (PL_is_variable(in_client)) { PL_fail; }
   rd_kafka_t *rk;

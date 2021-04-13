@@ -22,7 +22,11 @@ run_test :-
 
   kafka_consumer_new(Config, Consumer),
 
-  kafka_subscribe(Consumer, 0, 0, ["topic001"]),
+  % subscribe to a range of partitions in the list of topics
+  %kafka_subscribe(Consumer, 0, 0, ["topic001"]),
+
+  % subscribe to a list of topics (dynamic assignment to partitions)
+  kafka_subscribe(Consumer, ["topic001"]),
 
   % polls until first message
   repeat,
