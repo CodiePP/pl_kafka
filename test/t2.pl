@@ -18,7 +18,7 @@ run_test :-
   kafka_conf_new(Config),
   kafka_conf_set(Config, "client.id", "it-s-me"),
   kafka_conf_set(Config, "group.id", "1"),
-  kafka_conf_set(Config, "bootstrap.servers", "localhost:9092"),
+  kafka_conf_set(Config, "bootstrap.servers", "localhost:9092,host.docker.internal:9092"),
 
   kafka_consumer_new(Config, Consumer),
 
