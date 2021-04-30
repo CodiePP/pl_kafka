@@ -1,5 +1,11 @@
-
 FROM swipl
+
+LABEL description="Prolog interface to Apache Kafka" \
+      version="1.0.0" \
+      license="GPL-3.0" \
+      copyright="Copyright (C) 2021 Alexander Diemand" \
+      maintainer="codieplusplus@apax.net" \
+      homepage="https://github.com/CodiePP/pl_kafka"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

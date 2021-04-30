@@ -1,0 +1,16 @@
+
+.git
+.github
+.gitignore
+
+Dockerfile*
+docker-compose*
+
+autom4te.cache
+config.log
+config.status
+obj-*
+
+config.status
+configure
+Makefile
