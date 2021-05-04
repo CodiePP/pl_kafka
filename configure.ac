@@ -40,6 +40,8 @@ AC_SUBST(RDKAFKA_CFLAGS)
 AC_SUBST(RDKAFKA_LIBS)
 AC_SUBST(LIBCRYPTO_CFLAGS)
 AC_SUBST(LIBCRYPTO_LIBS)
+AC_SUBST(LIBSSL_CFLAGS)
+AC_SUBST(LIBSSL_LIBS)
 AC_SUBST(GI_CFLAGS)
 AC_SUBST(GI_LIBS)
 AC_SUBST(GI_DATADIR)
@@ -48,13 +50,20 @@ AC_SUBST(PLTARGET)
 
 if [[ $ARCH = "Linux" ]]; then
 PKG_PROG_PKG_CONFIG()
-PKG_CHECK_MODULES([SWI], [swipl rdkafka libcrypto zlib])
+PKG_CHECK_MODULES([SWI], [swipl libcrypto libssl zlib])
 
 SWI_BASE=$($PKG_CONFIG --variable=PLBASE swipl)
 SWI_ARCH=$($PKG_CONFIG --variable=PLARCH swipl)
 SWI_SOLIBDIR=$SWI_BASE/lib/$SWI_ARCH
 SWI_PLLIBDIR=$SWI_BASE/library
 fi
+
+AC_CHECK_FILE(./librdkafka-1.6.1/BUILD/lib/librdkafka.a,
+              [RDKAFKA_CFLAGS="-I./librdkafka-1.6.1/BUILD/include"],[])
+AC_CHECK_FILE(./librdkafka-1.6.1/BUILD/lib/librdkafka.a,
+              [RDKAFKA_LIBS="./librdkafka-1.6.1/BUILD/lib/librdkafka.a"],
+              [PKG_CHECK_MODULES([RDKAFKA], [rdkafka])] )
+
 
 if [[ $ARCH = "Darwin" ]]; then
   SWI_BASE=/usr/local/opt/swi-prolog

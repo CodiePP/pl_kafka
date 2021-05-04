@@ -15,3 +15,5 @@ Makefile
 config.status
 autom4te.cache
 
+librdkafka-1.6.1/
+v1.6.1.tar.gz

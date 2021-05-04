@@ -10,7 +10,7 @@ stdenv.mkDerivation rec {
         automake
         autoconf
         pkg-config
-        rdkafka
+        #rdkafka
         gcc
         gprolog
         swiProlog

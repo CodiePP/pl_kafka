@@ -10,7 +10,15 @@ autom4te.cache
 config.log
 config.status
 obj-*
+plkafka-*
 
 config.status
 configure
 Makefile
+librdkafka-1.6.1
+v1.6.1.tar.gz
+
+src/config.h
+src/config.h.in
+src/*.qlf
+

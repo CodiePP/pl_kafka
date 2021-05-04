@@ -9,19 +9,30 @@ LABEL description="Prolog interface to Apache Kafka" \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      librdkafka-dev \
       automake \
       autoconf \
       pkg-config \
       git \
+      wget \
       build-essential \
       libssh-dev \
       zlib1g-dev \
       gcc
 
-RUN mkdir -vp /SRC && cd /SRC && git clone https://github.com/CodiePP/pl_kafka.git pl_kafka.git
+#RUN mkdir -vp /SRC && cd /SRC && git clone https://github.com/CodiePP/pl_kafka.git pl_kafka.git
 
-WORKDIR /SRC/pl_kafka.git
+WORKDIR /SRC
+
+RUN wget https://github.com/edenhill/librdkafka/archive/refs/tags/v1.6.1.tar.gz && tar xzf v1.6.1.tar.gz
+
+WORKDIR /SRC/librdkafka-1.6.1
+
+RUN mkdir BUILD
+RUN ./configure --prefix=$(pwd)/BUILD --CFLAGS=-fPIC --LDFLAGS=-fPIC --no-download --disable-sasl --enable-lz4 --enable-ssl --enable-zlib --disable-devel --disable-valgrind --disable-refcnt-debug && make && make install
+
+WORKDIR /SRC
+
+COPY . .
 
 RUN aclocal --force && autoheader --force && autoconf --force
 
