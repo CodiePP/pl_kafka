@@ -1,7 +1,10 @@
-
+% this test demonstrates how to write data to a topic
+%
 % start a listener:
 % ./bin/kafka-console-consumer.sh --topic topic001 --from-beginning --bootstrap-server localhost:9092
 % then launch this test:
+% $ swipl -l test/t1.pl -g test
+% or:
 %
 % ?- [t1].
 % ?- test.
@@ -15,17 +18,17 @@ test :-
 
 run_test :-
   kafka_conf_new(Config),
-  kafka_conf_set(Config, "client.id", "it-s-me"),
-  kafka_conf_set(Config, "bootstrap.servers", "localhost:9092,host.docker.internal:9092"),
+  kafka_conf_set(Config, 'client.id', 'it-s-me'),
+  kafka_conf_set(Config, 'bootstrap.servers', 'localhost:9092,host.docker.internal:9092'),
 
   kafka_producer_new(Config, Producer),
 
   kafka_topic_conf_new(TopiConf),
-  kafka_topic_conf_set(TopiConf, "acks", "all"),
-  kafka_topic_new(Producer, "topic001", TopiConf, Topic001),
+  kafka_topic_conf_set(TopiConf, 'acks', 'all'),
+  kafka_topic_new(Producer, 'topic001', TopiConf, Topic001),
 
-  kafka_produce(Topic001, "hello there."),
-  kafka_produce(Topic001, -1, "keying..", 'key'),
+  kafka_produce(Topic001, 'hello there.'),
+  kafka_produce(Topic001, -1, 'keying..', 'key'),
   kafka_produce(Topic001, 0, 'sending in partition 0'),
   kafka_produce_batch(Topic001, -1, ['one', 'two', 'three']),
 

@@ -1,10 +1,13 @@
 
+% this test demonstrates the receiving of data in batches
+%
 % start a producer:
 % ./bin/kafka-console-producer.sh --topic topic001 --bootstrap-server localhost:9092
 % and write some data to the topic
 % then, run this test:
-%
-% ?- [t2].
+% $ swipl -l test/t3.pl -g test
+% or:
+% ?- [t3].
 % ?- test.
 %
 
@@ -21,18 +24,21 @@ rd_kafka_offset_tail(Cnt, Offset) :-
 
 run_test :-
   kafka_conf_new(Config),
-  kafka_conf_set(Config, "client.id", "it-s-me"),
-  kafka_conf_set(Config, "group.id", "1"),
-  kafka_conf_set(Config, "bootstrap.servers", "localhost:9092,host.docker.internal:9092"),
+  kafka_conf_set(Config, 'client.id', 'it-s-me'),
+  kafka_conf_set(Config, 'group.id', '1'),
+  kafka_conf_set(Config, 'bootstrap.servers', 'localhost:9092,host.docker.internal:9092'),
 
   kafka_consumer_new(Config, Consumer),
 
   kafka_topic_conf_new(TopiConf),
-  kafka_topic_conf_set(TopiConf, "acks", "all"),
-  kafka_topic_new(Consumer, "topic001", TopiConf, Topic001),
+  kafka_topic_conf_set(TopiConf, 'acks', 'all'),
+  kafka_topic_new(Consumer, 'topic001', TopiConf, Topic001),
 
+  % always reads from the beginning of the topic
   %RD_KAFKA_OFFSET_BEGINNING = -2,
+  % a follower on the topic; only receives newly added data
   %RD_KAFKA_OFFSET_END = -1,
+  % restarts from where we left before
   RD_KAFKA_OFFSET_STORED = -1000,
 
   Partition = 0,
@@ -46,7 +52,7 @@ run_test :-
   ;
     format("timed out~n",[])
   ),
-  
+
   kafka_consume_stop(Topic001, Partition),
   kafka_consumer_close(Consumer),
   kafka_destroy(Consumer).
