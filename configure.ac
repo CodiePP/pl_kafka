@@ -48,49 +48,19 @@ AC_SUBST(GI_DATADIR)
 AC_SUBST(SOTARGET)
 AC_SUBST(PLTARGET)
 
-if [[ $ARCH = "Linux" ]]; then
 PKG_PROG_PKG_CONFIG()
-PKG_CHECK_MODULES([SWI], [swipl libcrypto libssl zlib])
+
+if [[ $ARCH = "Darwin" ]]; then
+  # you likely need to adjust these paths:
+  export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:${HOME}/.local/share/pkgconfig:/usr/local/opt/openssl:/opt/homebrew/opt/openssl/lib/pkgconfig"
+fi
+
+PKG_CHECK_MODULES([SWI], [swipl libcrypto libssl zlib rdkafka ])
 
 SWI_BASE=$($PKG_CONFIG --variable=PLBASE swipl)
 SWI_ARCH=$($PKG_CONFIG --variable=PLARCH swipl)
 SWI_SOLIBDIR=$SWI_BASE/lib/$SWI_ARCH
 SWI_PLLIBDIR=$SWI_BASE/library
-fi
-
-AC_CHECK_FILE(./librdkafka-1.6.1/BUILD/lib/librdkafka.a,
-              [RDKAFKA_CFLAGS="-I./librdkafka-1.6.1/BUILD/include"],[])
-AC_CHECK_FILE(./librdkafka-1.6.1/BUILD/lib/librdkafka.a,
-              [RDKAFKA_LIBS="./librdkafka-1.6.1/BUILD/lib/librdkafka.a"],
-              [PKG_CHECK_MODULES([RDKAFKA], [rdkafka])] )
-
-
-if [[ $ARCH = "Darwin" ]]; then
-  SWI_BASE=/usr/local/opt/swi-prolog
-  if test -d "${SWI_BASE}"; then
-    MACHINE=$(uname -m)
-    SWI_CFLAGS="-I${SWI_BASE}/libexec/lib/swipl/include"
-    SWI_LIBS="-L${SWI_BASE}/libexec/lib/swipl/lib/${MACHINE}-darwin -lswipl"
-  else
-    AC_MSG_FAILURE([cannot find SWI Prolog])
-  fi
-  LIBCRYPTO_BASE=/usr/local/opt/openssl
-  if test -d "${LIBCRYPTO_BASE}"; then
-    MACHINE=$(uname -m)
-    LIBCRYPTO_CFLAGS="-I${LIBCRYPTO_BASE}/include"
-    LIBCRYPTO_LIBS="-L${LIBCRYPTO_BASE}/lib -lcrypto"
-  else
-    AC_MSG_FAILURE([cannot find OpenSSL])
-  fi
-  RDKAFKA_BASE=/usr/local/opt/librdkafka
-  if test -d "${RDKAFKA_BASE}"; then
-    MACHINE=$(uname -m)
-    RDKAFKA_CFLAGS="-I${RDKAFKA_BASE}/include"
-    RDKAFKA_LIBS="-L${RDKAFKA_BASE}/lib -lrdkafka"
-  else
-    AC_MSG_FAILURE([cannot find library rdkafka])
-  fi
-fi
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdint.h])
