@@ -1,16 +1,16 @@
 /*   SWI-Prolog Interface to Kafka
  *   Copyright (C) 2021  Alexander Diemand
- * 
+ *
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
- *   
+ *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
- *   
+ *
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -24,6 +24,8 @@
 #include <SWI-Prolog.h>
 #include <librdkafka/rdkafka.h>
 
+#include "kafka_core.h"
+
 /* declarations */
 foreign_t swi_kafka_version(atom_t v);
 foreign_t swi_kafka_conf_new(term_t cid);
@@ -36,7 +38,7 @@ foreign_t swi_kafka_consumer_new(term_t cid, term_t consumer);
 foreign_t swi_kafka_producer_new(term_t cid, term_t producer);
 foreign_t swi_kafka_destroy(term_t client);
 foreign_t swi_kafka_conf_dump(term_t cid, term_t list);
-foreign_t swi_kafka_topic_new(term_t cid, term_t producer, atom_t name, term_t topic);
+foreign_t swi_kafka_topic_new(term_t in_client, atom_t in_name, term_t in_cid, term_t out_topic);
 foreign_t swi_kafka_topic_destroy(term_t topic);
 foreign_t swi_kafka_produce(term_t topic, term_t partition, term_t payload, atom_t key);
 foreign_t swi_kafka_produce_batch(term_t topic, term_t partition, term_t len, term_t list);
@@ -163,8 +165,7 @@ foreign_t swi_kafka_conf_set(term_t in_cid, term_t in_k, term_t in_v)
   if (!PL_get_chars(in_v, &k_val, CVT_ATOM|CVT_STRING)) { PL_fail; }
 
   char errstr[128];
-  rd_kafka_conf_res_t res = rd_kafka_conf_set(kc, k_key, k_val, errstr, 127);
-  if (res != RD_KAFKA_CONF_OK) { PL_fail; }
+  if (pl_kafka_conf_set(kc, k_key, k_val, errstr, 127) != 0) { PL_fail; }
   PL_succeed;
 }
 
@@ -179,8 +180,7 @@ foreign_t swi_kafka_topic_conf_set(term_t in_cid, term_t in_k, term_t in_v)
   if (!PL_get_chars(in_v, &k_val, CVT_ATOM|CVT_STRING)) { PL_fail; }
 
   char errstr[128];
-  rd_kafka_conf_res_t res = rd_kafka_topic_conf_set(kc, k_key, k_val, errstr, 127);
-  if (res != RD_KAFKA_CONF_OK) { PL_fail; }
+  if (pl_kafka_topic_conf_set(kc, k_key, k_val, errstr, 127) != 0) { PL_fail; }
   PL_succeed;
 }
 
@@ -192,7 +192,7 @@ foreign_t swi_kafka_new(const char *name, rd_kafka_type_t type, term_t in_cid, t
 
   if (!PL_is_variable(out_client)) { PL_fail; }
   char errstr[128];
-  rd_kafka_t *k = rd_kafka_new(type, kc, errstr, 127);
+  rd_kafka_t *k = pl_kafka_new(type, kc, errstr, 127);
   if (!k)
   {
     printf("ERROR - kafka new %s: %s\n", name, errstr);
@@ -235,7 +235,7 @@ foreign_t swi_kafka_topic_new(term_t in_client, atom_t in_name, term_t in_cid, t
   if (!PL_get_chars(in_name, &k_name, CVT_ATOM|CVT_STRING)) { PL_fail; }
 
   if (!PL_is_variable(out_topic)) { PL_fail; }
-  rd_kafka_topic_t *t = rd_kafka_topic_new(rk, k_name, kc);
+  rd_kafka_topic_t *t = pl_kafka_topic_new(rk, k_name, kc);
   if (!t)
   {
     printf("ERROR - kafka new topic failed with code: %d\n", errno);
@@ -261,7 +261,6 @@ foreign_t swi_kafka_produce(term_t in_topic, term_t in_partition, term_t in_payl
 
   int32_t partition;
   PL_get_integer(in_partition, &partition);
-  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
 
   if (PL_is_variable(in_payload)) { PL_fail; }
   char *k_payload; int n_payload = 0;
@@ -274,11 +273,7 @@ foreign_t swi_kafka_produce(term_t in_topic, term_t in_partition, term_t in_payl
   if (k_key && k_key[0] == '\0') { k_key = NULL; }
   if (k_key) { n_key = strlen(k_key); }
 
-  int res = rd_kafka_produce(rkt, partition,
-              RD_KAFKA_MSG_F_COPY | RD_KAFKA_MSG_F_BLOCK,
-              k_payload, n_payload,
-              k_key, n_key,
-              NULL);
+  int res = pl_kafka_produce(rkt, partition, k_payload, n_payload, k_key, n_key);
   if (res != 0) { PL_fail; }
   PL_succeed;
 }
@@ -291,7 +286,6 @@ foreign_t swi_kafka_produce_batch(term_t in_topic, term_t in_partition, term_t i
 
   int32_t partition;
   PL_get_integer(in_partition, &partition);
-  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
 
   int32_t llen;
   PL_get_integer(in_len, &llen);
@@ -318,9 +312,7 @@ foreign_t swi_kafka_produce_batch(term_t in_topic, term_t in_partition, term_t i
     cnt++;
   }
 
-  int res = rd_kafka_produce_batch(rkt, partition,
-              RD_KAFKA_MSG_F_COPY | RD_KAFKA_MSG_F_BLOCK,
-              msgs, cnt);
+  int res = pl_kafka_produce_batch(rkt, partition, msgs, cnt);
   if (res != cnt) {
     printf("kafka_produce_batch produced: %d\n", res);
     PL_fail; }
@@ -335,7 +327,6 @@ foreign_t swi_kafka_consume_batch(term_t in_topic, term_t in_partition, term_t i
 
   int32_t partition;
   PL_get_integer(in_partition, &partition);
-  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
 
   int32_t timeout;
   PL_get_integer(in_timeout, &timeout);
@@ -346,8 +337,7 @@ foreign_t swi_kafka_consume_batch(term_t in_topic, term_t in_partition, term_t i
   int sz = 100;
   rd_kafka_message_t* msgs[sz];
 
-  int res = rd_kafka_consume_batch(rkt, partition, timeout,
-                                   msgs, sz);
+  int res = pl_kafka_consume_batch(rkt, partition, timeout, msgs, sz);
   if (res <= 0) {
     PL_fail;
   }
@@ -360,8 +350,10 @@ foreign_t swi_kafka_consume_batch(term_t in_topic, term_t in_partition, term_t i
   {
     if (msgs[idx]->err == RD_KAFKA_RESP_ERR__PARTITION_EOF) { break; }
     if (msgs[idx]->err == 0) {
+      pl_kafka_message nm;
+      pl_kafka_message_read(msgs[idx], &nm);
       if (!PL_unify_list(lst, ele, lst)) { isOK = 0; break; }
-      if (!PL_unify_term(ele, PL_NCHARS, msgs[idx]->len, (char*)msgs[idx]->payload)) { isOK = 0; break; }
+      if (!PL_unify_term(ele, PL_NCHARS, nm.payload_len, (char*)nm.payload)) { isOK = 0; break; }
     }
     rd_kafka_message_destroy(msgs[idx]);
     idx++;
@@ -381,12 +373,11 @@ foreign_t swi_kafka_consume_start(term_t in_topic, term_t in_partition, term_t i
 
   int32_t partition;
   PL_get_integer(in_partition, &partition);
-  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
 
   int64_t offset;
   PL_get_int64(in_offset, &offset);
 
-  if (rd_kafka_consume_start(rkt, partition, offset) != 0)
+  if (pl_kafka_consume_start(rkt, partition, offset) != 0)
   {
     PL_fail;
   }
@@ -401,9 +392,8 @@ foreign_t swi_kafka_consume_stop(term_t in_topic, term_t in_partition)
 
   int32_t partition;
   PL_get_integer(in_partition, &partition);
-  if (partition < 0) { partition = RD_KAFKA_PARTITION_UA; }
 
-  if (rd_kafka_consume_stop(rkt, partition) != 0)
+  if (pl_kafka_consume_stop(rkt, partition) != 0)
   {
     PL_fail;
   }
@@ -420,18 +410,17 @@ foreign_t swi_kafka_flush(term_t in_client, term_t in_timeout)
   int32_t timeout;
   PL_get_integer(in_timeout, &timeout);
 
-  rd_kafka_resp_err_t res = rd_kafka_flush(rk, timeout);
+  rd_kafka_resp_err_t res = pl_kafka_flush(rk, timeout);
   if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
   PL_succeed;
 }
 
-int unify_message(rd_kafka_message_t *msg, term_t out_msg, term_t out_meta)
+static int swi_unify_kafka_message(const pl_kafka_message *msg, term_t out_msg, term_t out_meta)
 {
-  if (!msg || msg->err != 0) { return -1; }
   if (!PL_is_variable(out_msg)) { return -2; }
   if (!PL_is_variable(out_meta)) { return -3; }
 
-  if (!PL_unify_term(out_msg, PL_NCHARS, msg->len, (char*)msg->payload)) { return 1; }
+  if (!PL_unify_term(out_msg, PL_NCHARS, msg->payload_len, (char*)msg->payload)) { return 1; }
 
   term_t ele = PL_new_term_ref();
   term_t lst = PL_copy_term_ref(out_meta);
@@ -469,19 +458,27 @@ foreign_t swi_kafka_consumer_poll(term_t in_client, term_t in_timeout, term_t ou
   if (!PL_is_variable(out_message)) { PL_fail; }
   if (!PL_is_variable(out_meta)) { PL_fail; }
 
-  rd_kafka_message_t *msg = rd_kafka_consumer_poll(rk, timeout);
+  rd_kafka_message_t *msg = pl_kafka_consumer_poll(rk, timeout);
   if (!msg)
   {
     //printf("ERROR: nothing returned from poll\n");
     PL_fail;
   }
+
   if (msg->err != 0)
   {
     printf("ERROR: polling returned: %s\n", (char*)msg->payload);
+    rd_kafka_message_destroy(msg);
     PL_fail;
   }
-  int res;
-  if ((res = unify_message(msg, out_message, out_meta)) != 0)
+
+  pl_kafka_message nm;
+  pl_kafka_message_read(msg, &nm);
+
+  int res = swi_unify_kafka_message(&nm, out_message, out_meta);
+  rd_kafka_message_destroy(msg);
+
+  if (res != 0)
   {
     printf("ERROR: poll message unification returned: %d\n", res);
     PL_fail;
@@ -513,8 +510,7 @@ foreign_t swi_kafka_subscribe3(term_t in_client, term_t in_len, term_t in_topics
     if (!PL_get_chars(hd, &k_topic, CVT_ATOM|CVT_STRING)) { PL_fail; }
     rd_kafka_topic_partition_list_add(ktl, k_topic, -1);
   }
-  rd_kafka_resp_err_t res = rd_kafka_subscribe(rk, ktl);
-  rd_kafka_topic_partition_list_destroy(ktl);
+  rd_kafka_resp_err_t res = pl_kafka_subscribe(rk, ktl);
   if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
   PL_succeed;
 }
@@ -551,8 +547,7 @@ foreign_t swi_kafka_subscribe5(term_t in_client, term_t in_lo, term_t in_hi, ter
     if (!PL_get_chars(hd, &k_topic, CVT_ATOM|CVT_STRING)) { PL_fail; }
     rd_kafka_topic_partition_list_add_range(ktl, k_topic, lo, hi);
   }
-  rd_kafka_resp_err_t res = rd_kafka_subscribe(rk, ktl);
-  rd_kafka_topic_partition_list_destroy(ktl);
+  rd_kafka_resp_err_t res = pl_kafka_subscribe(rk, ktl);
   if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
   PL_succeed;
 }
@@ -563,7 +558,7 @@ foreign_t swi_kafka_unsubscribe(term_t in_client)
   rd_kafka_t *rk;
   if (!PL_get_pointer(in_client, (void**)&rk)) { PL_fail; }
 
-  rd_kafka_resp_err_t res = rd_kafka_unsubscribe(rk);
+  rd_kafka_resp_err_t res = pl_kafka_unsubscribe(rk);
   if (res != RD_KAFKA_RESP_ERR_NO_ERROR) { PL_fail; }
   PL_succeed;
 }

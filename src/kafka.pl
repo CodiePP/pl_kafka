@@ -4,7 +4,7 @@
 /* File  : kafka.pl                                                        */
 /* Author: Alexander Diemand                                               */
 /*                                                                         */
-/* Copyright (C) 2021 Alexander Diemand                                    */
+/* Copyright (C) 2021-2026 Alexander Diemand                               */
 /*                                                                         */
 /*   This program is free software: you can redistribute it and/or modify  */
 /*   it under the terms of the GNU General Public License as published by  */
@@ -47,8 +47,6 @@
                  , kafka_consume_start/3
                  , kafka_consume_stop/2
                  ]).
-
-:- use_foreign_library(sbcl('plkafka')).
 
 % kafka_version(String)
 kafka_version(Kv) :-
@@ -104,11 +102,11 @@ kafka_conf_dump(Cid, ConfPairs) :-
   var(ConfPairs),
   pl_kafka_conf_dump(Cid, ConfPairs).
 
-% kafka_topic_new(+Cid, +Producer, +String, -Topic)
-kafka_topic_new(Cid, Producer, TopicName, Topic) :-
-  nonvar(Cid), nonvar(producer),
-  nonvar(TopicName), var(Topic),
-  pl_kafka_topic_new(Cid, Producer, TopicName, Topic).
+% kafka_topic_new(+Client, +TopicName, +TopicConf, -Topic)
+kafka_topic_new(Client, TopicName, TopicConf, Topic) :-
+  nonvar(Client), nonvar(TopicName),
+  nonvar(TopicConf), var(Topic),
+  pl_kafka_topic_new(Client, TopicName, TopicConf, Topic).
 
 % kafka_topic_destroy(+Topic)
 kafka_topic_destroy(Topic) :-
@@ -118,21 +116,21 @@ kafka_topic_destroy(Topic) :-
 % kafka_produce(+Topic, +String)
 kafka_produce(Topic, Payload) :-
   nonvar(Topic),
-  ( string(Payload) ; atom(Payload) ),
+  atom(Payload),
   % partition unassigned (-1)
   pl_kafka_produce(Topic, -1, Payload, '').
 
 % kafka_produce(+Topic, +Integer, +String)
 kafka_produce(Topic, Partition, Payload) :-
   nonvar(Topic), integer(Partition),
-  ( string(Payload) ; atom(Payload) ),
+  atom(Payload),
   pl_kafka_produce(Topic, Partition, Payload, '').
 
 % kafka_produce(+Topic, +Integer, +String, +String)
 kafka_produce(Topic, Partition, Payload, Key) :-
   nonvar(Topic), integer(Partition),
-  ( string(Payload) ; atom(Payload) ),
-  ( string(Key) ; atom(Key) ),
+  atom(Payload),
+  atom(Key),
   pl_kafka_produce(Topic, Partition, Payload, Key).
 
 % kafka_produce_batch(+Topic, +Integer, +List)

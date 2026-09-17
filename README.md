@@ -1,8 +1,6 @@
 
 # Interfacing to Kafka from Prolog
 
-[![building the package for SWI Prolog](https://github.com/CodiePP/pl_kafka/actions/workflows/compilation.yml/badge.svg)](https://github.com/CodiePP/pl_kafka/actions/workflows/compilation.yml)
-
 ## compilation
 
 ```sh
@@ -12,7 +10,7 @@ then run
 ```sh
 ./configure
 ```
-then call `make swi`
+then call `make swi`, `make gp`
 
 ## examples
 

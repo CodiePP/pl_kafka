@@ -1,0 +1,40 @@
+# CI job image for pl_kafka: pre-installs SWI-Prolog, GNU Prolog, librdkafka
+# and build tools so Forgejo Actions runs don't apt-get on every job.
+#
+# build:  docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile.ci -t code.sbclab.net/alex/pl_kafka-ci:1.0.0 --push .
+# use in .forgejo/workflows/CI.yaml as: container: image: code.sbclab.net/alex/pl_kafka-ci:1.0.0
+
+FROM debian:bookworm-slim
+
+LABEL description="CI image for pl_kafka: SWI-Prolog, GNU Prolog, librdkafka, build tools" \
+      maintainer="codieplusplus@apax.net"
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      swi-prolog-nox \
+      librdkafka-dev \
+      libssl-dev \
+      zlib1g-dev \
+      build-essential \
+      autoconf \
+      automake \
+      pkg-config \
+      git \
+      ca-certificates \
+      netcat-openbsd \
+      docker.io \
+      wget \
+      m4 \
+      nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# GNU Prolog is only packaged for amd64 in Debian bookworm (no arm64
+# candidate) -- build it from source so the image works on both arches.
+ARG GPROLOG_VERSION=1.5.0
+RUN wget -q https://ftp.gnu.org/gnu/gprolog/gprolog-${GPROLOG_VERSION}.tar.gz && \
+    tar xzf gprolog-${GPROLOG_VERSION}.tar.gz && \
+    cd gprolog-${GPROLOG_VERSION}/src && \
+    ./configure && \
+    make && \
+    make install && \
+    cd / && rm -rf gprolog-${GPROLOG_VERSION} gprolog-${GPROLOG_VERSION}.tar.gz

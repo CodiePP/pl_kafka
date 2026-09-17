@@ -16,13 +16,14 @@
 
 SWIPL = swipl
 GPLC = gplc
+RANLIB = @RANLIB@
 
 LINK = @CC@
 
 SWI_CFLAGS = @RDKAFKA_CFLAGS@ @SWI_CFLAGS@ @LIBCRYPTO_CFLAGS@ @LIBSSL_CFLAGS@
 SWI_LDLIBS = @RDKAFKA_LIBS@ @SWI_LIBS@ @LIBCRYPTO_LIBS@ @LIBSSL_LIBS@
 SWI_LDFLAGS = -shared
-GP_CFLAGS = @RDKAFKA_CFLAGS@ @LIBCRYPTO_CFLAGS@
+GP_CFLAGS = @SWI_CFLAGS@
 GP_LDLIBS = @RDKAFKA_LIBS@ @LIBCRYPTO_LIBS@
 
 # module name
@@ -31,13 +32,11 @@ MODULE = @PACKAGE_NAME@-@ARCH@
 SRCDIR = src
 OBJDIR = obj-@ARCH@
 
-GP_SRCS = 
-#$(SRCDIR)/gp-kafka.pl $(SRCDIR)/gp-kafka-c.c
-GP_OBJS = 
-#$(OBJDIR)/gp-kafka.gpo $(OBJDIR)/gp-kafka-c.gpo
+GP_SRCS = $(SRCDIR)/kafka.pl $(SRCDIR)/gp-kafka.pl $(SRCDIR)/gp-kafka-c.c $(SRCDIR)/kafka_core.c
+GP_OBJS = $(OBJDIR)/kafka.gpo $(OBJDIR)/gp-kafka.gpo $(OBJDIR)/gp-kafka-c.gpo $(OBJDIR)/kafka_core.gpo
 
 # object files
-SWI_OBJS = $(OBJDIR)/swi-kafka-c.o
+SWI_OBJS = $(OBJDIR)/swi-kafka-c.o $(OBJDIR)/kafka_core.o
 
 .SUFFIXES: .c
 
@@ -52,7 +51,7 @@ $(OBJDIR)/%.gpo : $(SRCDIR)/%.pl
 
 $(OBJDIR)/%.gpo : $(SRCDIR)/%.c
 	@echo "compiling $<"
-	$(GPLC) -c @DEFS@ -o $@ $<
+	$(GPLC) -c $(foreach f,@DEFS@ $(GP_CFLAGS),-C $(f)) -o $@ $<
 
 $(SRCDIR)/%.qlf : $(SRCDIR)/%.pl
 	@echo "compiling $<"

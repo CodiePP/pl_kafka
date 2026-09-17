@@ -1,5 +1,6 @@
 obj-*/
 /plkafka-*
+/libplkafka-*.a
 
 src/config.h
 src/config.h.in
@@ -17,3 +18,4 @@ autom4te.cache
 
 librdkafka-1.6.1/
 v1.6.1.tar.gz
+.DS_Store

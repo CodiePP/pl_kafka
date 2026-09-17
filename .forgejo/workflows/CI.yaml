@@ -1,0 +1,147 @@
+# This is a basic workflow to help you get started with Actions
+
+name: building and testing the module for SWI-Prolog and GNU Prolog
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    runs-on: nixos-amd64
+    # each job runs on its own dind-generated bridge network
+    # (WORKFLOW-<hash>, per the runner's logs) -- it does NOT share the
+    # k8s pod's network namespace with the dind sidecar, so neither
+    # localhost nor automount (which only works for a local socket
+    # *file*, and this runner's own DOCKER_HOST is TCP) can reach it.
+    # dind listens on 0.0.0.0:2375, which includes the bridge's gateway
+    # interface, so we reach it via that gateway IP instead (discovered
+    # at runtime below, since the network differs every run).
+    # pl_kafka-ci already has SWI-Prolog, GNU Prolog, librdkafka and the
+    # docker CLI baked in (see Dockerfile.ci) so this job doesn't apt-get
+    # on every run.
+    container:
+      image: code.sbclab.net/alex/pl_kafka-ci:1.0.0
+      credentials:
+        username: alex
+        password: ${{ secrets.PAT }}
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - name: Check out repository code
+        uses: https://data.forgejo.org/actions/checkout@v4
+        with:
+          submodules: false
+
+      # discover the bridge gateway IP (dind's address as seen from this
+      # job container) and point DOCKER_HOST at it, retrying in case the
+      # daemon is just slow to accept connections. dumps diagnostics if
+      # it never comes up.
+      - name: discover and wait for docker daemon
+        run: |
+          GW_HEX=$(awk '$2 == "00000000" {print $3}' /proc/net/route | head -1)
+          GW_IP=$(printf '%d.%d.%d.%d' 0x${GW_HEX:6:2} 0x${GW_HEX:4:2} 0x${GW_HEX:2:2} 0x${GW_HEX:0:2})
+          echo "gateway IP: ${GW_IP}"
+          echo "DOCKER_HOST=tcp://${GW_IP}:2375" >> "$GITHUB_ENV"
+          export DOCKER_HOST="tcp://${GW_IP}:2375"
+          # our own container's ID (as seen by the dind engine) --
+          # sibling containers we docker-run below get attached to this
+          # container's network namespace with --network container:$ID
+          # so their published ports become reachable via plain
+          # "localhost" from here, matching what test/t1-3.pl expect.
+          echo "JOB_CONTAINER_ID=$(hostname)" >> "$GITHUB_ENV"
+          echo "job container id: $(hostname)"
+          for i in $(seq 1 20); do
+            if docker version >/dev/null 2>&1; then
+              echo "docker reachable via ${DOCKER_HOST} (try $i)"
+              exit 0
+            fi
+            echo "docker daemon not reachable yet (try $i)..."; sleep 3
+          done
+          echo "--- diagnostics ---"
+          echo "gateway: ${GW_IP}"
+          echo "nc -zv ${GW_IP} 2375:"; nc -zv "${GW_IP}" 2375 || true
+          echo "/proc/net/route:"; cat /proc/net/route || true
+          echo "docker version, full error:"; docker version || true
+          echo "docker daemon never became reachable"; exit 1
+
+      # Redpanda is Kafka-API-compatible and starts as a single binary --
+      # started via a plain `docker run` (not a services: block) since
+      # dev-container mode needs explicit CLI flags that services: cannot
+      # pass through. --network container:$JOB_CONTAINER_ID attaches it to
+      # our own job container's network namespace (both are siblings on
+      # the same remote dind engine) so it's reachable via localhost:9092
+      # here, exactly as test/t1-3.pl expect -- no -p needed/possible when
+      # sharing another container's netns this way.
+      - name: start Redpanda
+        run: |
+          docker run -d --name redpanda --network container:${JOB_CONTAINER_ID} \
+            docker.redpanda.com/redpandadata/redpanda:v24.2.7 \
+            redpanda start --mode dev-container --smp 1 --overprovisioned \
+            --node-id 0 \
+            --kafka-addr PLAINTEXT://0.0.0.0:9092 \
+            --advertise-kafka-addr PLAINTEXT://localhost:9092
+
+      - name: wait for Redpanda broker
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 9092 && echo "broker is up" && exit 0
+            echo "waiting for broker ($i)..."; sleep 2
+          done
+          echo "broker did not come up in time"; exit 1
+
+      - name: autoconf
+        run: aclocal --force && autoheader --force && autoconf --force
+
+      - name: configure
+        run: ./configure
+
+      - name: make swi
+        run: make swi
+
+      - name: make gp
+        run: make gp
+
+      - name: install SWI module
+        run: |
+          mkdir -v -p ${HOME}/lib/sbcl
+          mkdir -v -p ${HOME}/.config/swi-prolog
+          cp -v plkafka-Linux ${HOME}/lib/sbcl/plkafka
+          cp -v src/kafka.qlf ${HOME}/lib/sbcl/
+          cp -v src/swi-kafka.pl ${HOME}/lib/sbcl/
+          echo ":- assertz(file_search_path(sbcl,'${HOME}/lib/sbcl'))." >> ${HOME}/.config/swi-prolog/init.pl
+
+      # run the shared test/*.pl files against the SWI backend, then again
+      # against the GNU Prolog backend -- same Prolog source, two builds.
+      # t1 (produce) must run before t2/t3 (consume) so there is data on
+      # the topic for the consumer tests to read.
+      - name: run t1/t2/t3 -- SWI-Prolog
+        run: |
+          swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t1.pl')" -g test -g halt
+          swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t2.pl')" -g test -g halt
+          swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t3.pl')" -g test -g halt
+
+      - name: run t1/t2/t3 -- GNU Prolog
+        run: |
+          gplc -o /tmp/t1-gp src/gp-kafka.pl src/kafka.pl test/t1.pl libplkafka-Linux.a -L -lrdkafka
+          gplc -o /tmp/t2-gp src/gp-kafka.pl src/kafka.pl test/t2.pl libplkafka-Linux.a -L -lrdkafka
+          gplc -o /tmp/t3-gp src/gp-kafka.pl src/kafka.pl test/t3.pl libplkafka-Linux.a -L -lrdkafka
+          echo 'test.' | /tmp/t1-gp
+          echo 'test.' | /tmp/t2-gp
+          echo 'test.' | /tmp/t3-gp
+
+      - name: make check
+        run: make check
+
+      - name: stop Redpanda
+        if: always()
+        run: docker rm -f redpanda || true

@@ -4,13 +4,11 @@
 % ./bin/kafka-console-producer.sh --topic topic001 --bootstrap-server localhost:9092
 % and write some data to the topic
 % then, run this test:
-% $ swipl -l test/t2.pl -g test
-% or:
-% ?- [t2].
-% ?- test.
+%   SWI:  $ swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t2.pl')" -g test
+%   GNU:  $ gplc -o t2 src/gp-kafka.pl src/kafka.pl test/t2.pl \
+%               libplkafka-@ARCH@.a -L -L<rdkafka-lib-dir> -L -lrdkafka
+%         $ echo test. | ./t2
 %
-
-:- use_module(sbcl(kafka)).
 
 test :-
   run_test,
@@ -20,6 +18,7 @@ run_test :-
   kafka_conf_new(Config),
   kafka_conf_set(Config, 'client.id', 'it-s-me'),
   kafka_conf_set(Config, 'group.id', '1'),
+  kafka_conf_set(Config, 'auto.offset.reset', 'earliest'),
   kafka_conf_set(Config, 'bootstrap.servers', 'localhost:9092,host.docker.internal:9092'),
 
   kafka_consumer_new(Config, Consumer),

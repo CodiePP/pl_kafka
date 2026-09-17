@@ -5,13 +5,11 @@
 % ./bin/kafka-console-producer.sh --topic topic001 --bootstrap-server localhost:9092
 % and write some data to the topic
 % then, run this test:
-% $ swipl -l test/t3.pl -g test
-% or:
-% ?- [t3].
-% ?- test.
+%   SWI:  $ swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t3.pl')" -g test
+%   GNU:  $ gplc -o t3 src/gp-kafka.pl src/kafka.pl test/t3.pl \
+%               libplkafka-@ARCH@.a -L -L<rdkafka-lib-dir> -L -lrdkafka
+%         $ echo test. | ./t3
 %
-
-:- use_module(sbcl(kafka)).
 
 test :-
   run_test,

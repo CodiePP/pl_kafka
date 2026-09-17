@@ -3,14 +3,11 @@
 % start a listener:
 % ./bin/kafka-console-consumer.sh --topic topic001 --from-beginning --bootstrap-server localhost:9092
 % then launch this test:
-% $ swipl -l test/t1.pl -g test
-% or:
+%   SWI:  $ swipl -q -g "consult('src/swi-kafka.pl')" -g "consult('test/t1.pl')" -g test
+%   GNU:  $ gplc -o t1 src/gp-kafka.pl src/kafka.pl test/t1.pl \
+%               libplkafka-@ARCH@.a -L -L<rdkafka-lib-dir> -L -lrdkafka
+%         $ echo test. | ./t1
 %
-% ?- [t1].
-% ?- test.
-%
-
-:- use_module(sbcl(kafka)).
 
 test :-
   run_test,
